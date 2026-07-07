@@ -1,0 +1,193 @@
+{
+  "info": {
+    "name": "Order Processing Platform",
+    "description": "Event-driven order platform: Order, Inventory, Payment, and Notification services communicating via Kafka using the saga pattern. Run docker compose up --build first, then use this collection to exercise the full saga.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "order_base", "value": "http://localhost:8001" },
+    { "key": "inventory_base", "value": "http://localhost:8002" },
+    { "key": "payment_base", "value": "http://localhost:8003" },
+    { "key": "notification_base", "value": "http://localhost:8004" },
+    { "key": "order_id", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Order Service",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{order_base}}/health"
+          }
+        },
+        {
+          "name": "Create Order - Happy Path (completes)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('order_id', body.id);",
+                  "pm.test('Order created with PENDING status', () => {",
+                  "  pm.expect(pm.response.code).to.equal(201);",
+                  "  pm.expect(body.status).to.equal('PENDING');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{order_base}}/orders",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"cust-1\",\n  \"sku\": \"SKU-WIDGET\",\n  \"quantity\": 2,\n  \"amount\": 50.00\n}"
+            }
+          }
+        },
+        {
+          "name": "Create Order - Triggers Payment Decline + Compensation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('order_id', body.id);",
+                  "pm.test('Order created', () => pm.expect(pm.response.code).to.equal(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{order_base}}/orders",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"cust-1\",\n  \"sku\": \"SKU-WIDGET\",\n  \"quantity\": 1,\n  \"amount\": 1500.00\n}"
+            }
+          }
+        },
+        {
+          "name": "Create Order - Insufficient Stock",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set('order_id', body.id);",
+                  "pm.test('Order created', () => pm.expect(pm.response.code).to.equal(201));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{order_base}}/orders",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"cust-1\",\n  \"sku\": \"SKU-GADGET\",\n  \"quantity\": 999,\n  \"amount\": 10.00\n}"
+            }
+          }
+        },
+        {
+          "name": "Get Order Status",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const body = pm.response.json();",
+                  "pm.test('Status is no longer PENDING (saga finished)', () => {",
+                  "  pm.expect(['COMPLETED', 'CANCELLED']).to.include(body.status);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{order_base}}/orders/{{order_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Inventory Service",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{inventory_base}}/health"
+          }
+        },
+        {
+          "name": "List Stock",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Demo SKUs are seeded', () => {",
+                  "  const skus = pm.response.json().map(s => s.sku);",
+                  "  pm.expect(skus).to.include('SKU-WIDGET');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "url": "{{inventory_base}}/stock"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Payment Service",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{payment_base}}/health"
+          }
+        },
+        {
+          "name": "Get Transaction for Order",
+          "request": {
+            "method": "GET",
+            "url": "{{payment_base}}/transactions/{{order_id}}"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Notification Service",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "url": "{{notification_base}}/health"
+          }
+        },
+        {
+          "name": "List Sent Notifications",
+          "request": {
+            "method": "GET",
+            "url": "{{notification_base}}/notifications"
+          }
+        }
+      ]
+    }
+  ]
+}
